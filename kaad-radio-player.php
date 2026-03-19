@@ -556,6 +556,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
         margin-top: 3px;
         font-size: 11.5px;
         opacity: 0.82;
+        text-align: center;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -823,7 +824,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
           return;
         }
 
-        showEl.textContent = text;
+        showEl.textContent = 'Current Show: ' + text;
         showEl.classList.remove('is-hidden');
       }
 
