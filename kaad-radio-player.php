@@ -550,6 +550,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
         align-items: center;
         gap: 24px;
         white-space: nowrap;
+        min-width: max-content;
         will-change: transform;
       }
       .kaad-track.is-scrolling .kaad-track-marquee {
@@ -722,7 +723,11 @@ add_shortcode('kaad_radio_player', function ($atts) {
         npEl.style.removeProperty('--kaad-scroll-duration');
         npEl.style.removeProperty('--kaad-scroll-distance');
 
-        requestAnimationFrame(function () {
+        function enableMarquee() {
+          if (!staticText.isConnected || staticText.parentNode !== npEl) {
+            return;
+          }
+
           const overflow = staticText.scrollWidth > npEl.clientWidth + 6;
           if (!overflow) return;
 
@@ -749,7 +754,12 @@ add_shortcode('kaad_radio_player', function ($atts) {
           npEl.style.setProperty('--kaad-scroll-duration', duration + 's');
           npEl.style.setProperty('--kaad-scroll-distance', distance + 'px');
           npEl.classList.add('is-scrolling');
+        }
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(enableMarquee);
         });
+        setTimeout(enableMarquee, 150);
       }
 
       if (audio && playBtn) {
