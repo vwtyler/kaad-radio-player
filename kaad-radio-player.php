@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KAAD Radio Player (Icecast Metadata)
  * Description: Shortcode player with now-playing text from a status JSON endpoint via a WordPress REST proxy.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Author: Tyler Jackson
  */
 
@@ -332,6 +332,7 @@ add_action('rest_api_init', function () {
       $artist = '';
       $title = '';
       $text = '';
+      $show_title = '';
 
       if (isset($json['text']) && is_string($json['text'])) {
         $text = trim($json['text']);
@@ -341,6 +342,11 @@ add_action('rest_api_init', function () {
       }
       if (isset($json['title']) && is_string($json['title'])) {
         $title = trim($json['title']);
+      }
+      if (isset($json['show']) && is_array($json['show']) && isset($json['show']['title']) && is_string($json['show']['title'])) {
+        $show_title = trim($json['show']['title']);
+      } elseif (isset($json['show_title']) && is_string($json['show_title'])) {
+        $show_title = trim($json['show_title']);
       }
 
       if (($artist === '' || $title === '') && isset($json['track']) && is_array($json['track'])) {
@@ -410,6 +416,7 @@ add_action('rest_api_init', function () {
         'artist' => $artist,
         'title' => $title,
         'text' => $text,
+        'show_title' => $show_title,
         'mount' => '/' . ltrim($mount, '/'),
         'status_url' => $status_url,
         'updated_at' => time(),
@@ -454,6 +461,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
           <div class="kaad-track kaad-now-playing" aria-live="polite">
             <span class="kaad-track-text">Loading...</span>
           </div>
+          <div class="kaad-show kaad-show-title is-hidden" aria-live="polite"></div>
         </div>
       </div>
 
@@ -540,6 +548,20 @@ add_shortcode('kaad_radio_player', function ($atts) {
         white-space: nowrap;
         overflow: hidden;
         position: relative;
+      }
+      .kaad-track.is-hidden {
+        display: none;
+      }
+      .kaad-show {
+        margin-top: 3px;
+        font-size: 11.5px;
+        opacity: 0.82;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .kaad-show.is-hidden {
+        display: none;
       }
       .kaad-track-text {
         display: inline-block;
@@ -707,21 +729,50 @@ add_shortcode('kaad_radio_player', function ($atts) {
       const volume = root.querySelector('.kaad-volume');
       const speakerBtn = root.querySelector('.kaad-speaker');
       const npEl = root.querySelector('.kaad-now-playing');
+      const showEl = root.querySelector('.kaad-show-title');
       const proxyUrl = <?php echo json_encode($proxy); ?>;
       const refreshMs = <?php echo json_encode($refresh * 1000); ?>;
 
-      function setNowPlayingText(text) {
+      function normalizeDisplayText(value) {
+        if (value === null || typeof value === 'undefined') {
+          return '';
+        }
+
+        const text = String(value).trim();
+        if (!text) {
+          return '';
+        }
+
+        const lowered = text.toLowerCase();
+        if (lowered === '0' || lowered === 'null') {
+          return '';
+        }
+
+        return text;
+      }
+
+      function setNowPlayingText(rawText) {
         if (!npEl) return;
+
+        const text = normalizeDisplayText(rawText);
+
+        npEl.classList.remove('is-scrolling');
+        npEl.style.removeProperty('--kaad-scroll-duration');
+        npEl.style.removeProperty('--kaad-scroll-distance');
+
+        if (text === '') {
+          npEl.innerHTML = '';
+          npEl.classList.add('is-hidden');
+          return;
+        }
+
+        npEl.classList.remove('is-hidden');
 
         npEl.innerHTML = '';
         const staticText = document.createElement('span');
         staticText.className = 'kaad-track-text';
         staticText.textContent = text;
         npEl.appendChild(staticText);
-
-        npEl.classList.remove('is-scrolling');
-        npEl.style.removeProperty('--kaad-scroll-duration');
-        npEl.style.removeProperty('--kaad-scroll-distance');
 
         function enableMarquee() {
           if (!staticText.isConnected || staticText.parentNode !== npEl) {
@@ -760,6 +811,20 @@ add_shortcode('kaad_radio_player', function ($atts) {
           requestAnimationFrame(enableMarquee);
         });
         setTimeout(enableMarquee, 150);
+      }
+
+      function setShowTitle(rawText) {
+        if (!showEl) return;
+
+        const text = normalizeDisplayText(rawText);
+        if (text === '') {
+          showEl.textContent = '';
+          showEl.classList.add('is-hidden');
+          return;
+        }
+
+        showEl.textContent = text;
+        showEl.classList.remove('is-hidden');
       }
 
       if (audio && playBtn) {
@@ -825,9 +890,11 @@ add_shortcode('kaad_radio_player', function ($atts) {
           if (!res.ok) {
             throw new Error((data && data.error) ? data.error : ('HTTP ' + res.status));
           }
-          setNowPlayingText((data && data.text) ? data.text : 'Unknown track');
+          setNowPlayingText(data ? data.text : '');
+          setShowTitle(data ? data.show_title : '');
         } catch (err) {
           setNowPlayingText('Unable to load track info');
+          setShowTitle('');
         }
       }
 
