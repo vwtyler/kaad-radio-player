@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KAAD Radio Player (Icecast Metadata)
  * Description: Shortcode player with now-playing text from a status JSON endpoint via a WordPress REST proxy.
- * Version: 1.3.3
+ * Version: 1.3.4
  * Author: Tyler Jackson
  */
 
@@ -461,7 +461,6 @@ add_shortcode('kaad_radio_player', function ($atts) {
           <div class="kaad-track kaad-now-playing" aria-live="polite">
             <span class="kaad-track-text">Loading...</span>
           </div>
-          <div class="kaad-show kaad-show-title is-hidden" aria-live="polite"></div>
         </div>
       </div>
 
@@ -550,18 +549,6 @@ add_shortcode('kaad_radio_player', function ($atts) {
         position: relative;
       }
       .kaad-track.is-hidden {
-        display: none;
-      }
-      .kaad-show {
-        margin-top: 3px;
-        font-size: 11.5px;
-        opacity: 0.82;
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .kaad-show.is-hidden {
         display: none;
       }
       .kaad-track-text {
@@ -730,7 +717,6 @@ add_shortcode('kaad_radio_player', function ($atts) {
       const volume = root.querySelector('.kaad-volume');
       const speakerBtn = root.querySelector('.kaad-speaker');
       const npEl = root.querySelector('.kaad-now-playing');
-      const showEl = root.querySelector('.kaad-show-title');
       const proxyUrl = <?php echo json_encode($proxy); ?>;
       const refreshMs = <?php echo json_encode($refresh * 1000); ?>;
 
@@ -814,20 +800,6 @@ add_shortcode('kaad_radio_player', function ($atts) {
         setTimeout(enableMarquee, 150);
       }
 
-      function setShowTitle(rawText) {
-        if (!showEl) return;
-
-        const text = normalizeDisplayText(rawText);
-        if (text === '') {
-          showEl.textContent = '';
-          showEl.classList.add('is-hidden');
-          return;
-        }
-
-        showEl.textContent = 'Current Show: ' + text;
-        showEl.classList.remove('is-hidden');
-      }
-
       if (audio && playBtn) {
         playBtn.addEventListener('click', async function () {
           try {
@@ -891,11 +863,21 @@ add_shortcode('kaad_radio_player', function ($atts) {
           if (!res.ok) {
             throw new Error((data && data.error) ? data.error : ('HTTP ' + res.status));
           }
-          setNowPlayingText(data ? data.text : '');
-          setShowTitle(data ? data.show_title : '');
+          const trackText = normalizeDisplayText(data ? data.text : '');
+          const showText = normalizeDisplayText(data ? data.show_title : '');
+
+          let displayText = '';
+          if (trackText !== '' && showText !== '') {
+            displayText = trackText + ' • Show: ' + showText;
+          } else if (trackText !== '') {
+            displayText = trackText;
+          } else if (showText !== '') {
+            displayText = 'Show: ' + showText;
+          }
+
+          setNowPlayingText(displayText);
         } catch (err) {
           setNowPlayingText('Unable to load track info');
-          setShowTitle('');
         }
       }
 
