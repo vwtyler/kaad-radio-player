@@ -20,3 +20,5 @@ jobs:
         run: php -l kaad-radio-player.php
       - name: Test stream URLs
         run: php tests/stream-url-test.php
+      - name: Test player recovery
+        run: node tests/player-recovery.test.cjs
