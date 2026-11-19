@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KAAD Radio Player (Icecast Metadata)
  * Description: Shortcode player with now-playing text from a status JSON endpoint via a WordPress REST proxy.
- * Version: 1.3.6
+ * Version: 1.3.7
  * Author: Tyler Jackson
  */
 
@@ -904,6 +904,9 @@ add_shortcode('kaad_radio_player', function ($atts) {
             generation += 1;
             wantsPlayback = true;
             updateButton();
+            // Always start a fresh live connection on user play, rather than
+            // resuming audio buffered before the listener pressed Play.
+            audio.load();
             startPlayback();
           }
         });
