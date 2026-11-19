@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KAAD Radio Player (Icecast Metadata)
  * Description: Shortcode player with now-playing text from a status JSON endpoint via a WordPress REST proxy.
- * Version: 1.3.4
+ * Version: 1.3.5
  * Author: Tyler Jackson
  */
 
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
 
 function kaad_radio_player_defaults() {
   return [
-    'stream_url' => 'https://s36.myradiostream.com:11555/stream',
+    'stream_url' => 'https://s36.myradiostream.com/:11554/stream',
     'status_url' => 'https://song.tjackson.me/',
     'mount' => 'stream',
     'refresh' => '20',
@@ -48,17 +48,6 @@ function kaad_radio_player_normalize_url($url) {
 
   if (!preg_match('#^https?://#i', $url)) {
     $url = 'https://' . ltrim($url, '/');
-  }
-
-  $parts = wp_parse_url($url);
-  if (is_array($parts)) {
-    if (empty($parts['port']) && isset($parts['path']) && is_string($parts['path'])) {
-      if (preg_match('#^/:(\d+)(/.*)?$#', $parts['path'], $matches)) {
-        $parts['port'] = intval($matches[1]);
-        $parts['path'] = isset($matches[2]) && $matches[2] !== '' ? $matches[2] : '/';
-        $url = kaad_radio_player_build_url($parts);
-      }
-    }
   }
 
   return esc_url_raw($url);
@@ -204,7 +193,7 @@ add_action('admin_init', function () {
   add_settings_field('kaad_stream_url', 'Stream URL', 'kaad_radio_player_render_text_field', 'kaad-radio-player', 'kaad_radio_player_main', [
     'key' => 'stream_url',
     'type' => 'url',
-    'desc' => 'Example: https://s36.myradiostream.com:11555/stream',
+    'desc' => 'Example: https://s36.myradiostream.com/:11554/stream',
   ]);
 
   add_settings_field('kaad_status_url', 'Status JSON URL', 'kaad_radio_player_render_text_field', 'kaad-radio-player', 'kaad_radio_player_main', [
