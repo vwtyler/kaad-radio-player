@@ -112,6 +112,17 @@ async function flush() { for (let i=0;i<4;i++) await Promise.resolve(); }
     assert.equal(x.audio.loadCount, 1);
     assert.equal(x.status.textContent, '');
   }
+  // A persistent stall triggers a reconnect even if readyState remains stale.
+  {
+    const x = setup();
+    x.playBtn._emit('click'); await flush();
+    x.audio.readyState = 4;
+    x.audio._emit('stalled');
+    await x.advance(15000);
+    assert.match(x.status.textContent, /Retrying in 2s/);
+    await x.advance(2000);
+    assert.equal(x.audio.playCount, 2);
+  }
   // A user can cancel a scheduled retry.
   {
     const x = setup();
