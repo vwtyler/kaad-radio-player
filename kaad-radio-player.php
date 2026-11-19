@@ -863,8 +863,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
           const thisGeneration = generation;
           stallTimer = setTimeout(function () {
             stallTimer = null;
-            if (wantsPlayback && retryTimer === null && thisGeneration === generation &&
-                (audio.paused || audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA)) {
+            if (wantsPlayback && retryTimer === null && thisGeneration === generation) {
               scheduleRetry('Stream did not resume within 15 seconds');
             }
           }, stallTimeoutMs);
@@ -931,13 +930,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
           // pause (or a pause during a scheduled retry) must never reconnect.
           if (wantsPlayback && retryTimer === null) startStallWatch();
         });
-        audio.addEventListener('play', function () {
-          // Handles autoplay events as well as explicit play clicks.
-          if (audio.autoplay && !wantsPlayback && !playBtn.getAttribute('aria-pressed')) {
-            wantsPlayback = true;
-          }
-          updateButton();
-        });
+        audio.addEventListener('play', updateButton);
 
         updateButton();
         if (wantsPlayback) startStallWatch();
