@@ -88,6 +88,19 @@ function setup() {
 async function flush() { for (let i=0;i<4;i++) await Promise.resolve(); }
 
 (async () => {
+  // Starting after the page has been idle must discard buffered audio.
+  {
+    const x = setup();
+    await x.advance(180000);
+    assert.equal(x.audio.loadCount, 0);
+    x.playBtn._emit('click'); await flush();
+    assert.equal(x.audio.loadCount, 1);
+    assert.equal(x.audio.playCount, 1);
+    x.playBtn._emit('click');
+    x.playBtn._emit('click'); await flush();
+    assert.equal(x.audio.loadCount, 2);
+    assert.equal(x.audio.playCount, 2);
+  }
   // An explicit stop should never trigger reconnection.
   {
     const x = setup();
@@ -109,7 +122,7 @@ async function flush() { for (let i=0;i<4;i++) await Promise.resolve(); }
     assert.equal(x.audio.playCount, 1);
     await x.advance(1);
     assert.equal(x.audio.playCount, 2);
-    assert.equal(x.audio.loadCount, 1);
+    assert.equal(x.audio.loadCount, 2);
     assert.equal(x.status.textContent, '');
   }
   // A persistent stall triggers a reconnect even if readyState remains stale.
