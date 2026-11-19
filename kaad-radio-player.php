@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KAAD Radio Player (Icecast Metadata)
  * Description: Shortcode player with now-playing text from a status JSON endpoint via a WordPress REST proxy.
- * Version: 1.3.5
+ * Version: 1.3.6
  * Author: Tyler Jackson
  */
 
@@ -456,7 +456,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
       <div class="kaad-divider"></div>
 
       <?php if ($stream_url): ?>
-        <audio class="kaad-audio" <?php echo $autoplay; ?> preload="auto">
+        <audio class="kaad-audio" <?php echo $autoplay; ?> preload="none">
           <source src="<?php echo esc_url($stream_url); ?>" type="audio/mpeg">
           Your browser does not support the audio element.
         </audio>
@@ -483,6 +483,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
             </div>
           </div>
         </div>
+        <div class="kaad-playback-status" role="status" aria-live="polite" aria-atomic="true"></div>
       <?php else: ?>
         <div class="kaad-warn">Missing <code>stream_url</code> in KAAD Radio Player settings.</div>
       <?php endif; ?>
@@ -683,6 +684,8 @@ add_shortcode('kaad_radio_player', function ($atts) {
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
       }
 
+      .kaad-playback-status { min-height: 0; margin-top: 4px; text-align: center; font-size: 12px; line-height: 1.3; color: rgba(255,255,255,.92); }
+      .kaad-playback-status:empty { display: none; }
       .kaad-warn { padding: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 10px; }
       @media (hover: none) {
         .kaad-volpop { display: none !important; }
@@ -705,6 +708,7 @@ add_shortcode('kaad_radio_player', function ($atts) {
       const playBtn = root.querySelector('.kaad-play');
       const volume = root.querySelector('.kaad-volume');
       const speakerBtn = root.querySelector('.kaad-speaker');
+      const playbackStatus = root.querySelector('.kaad-playback-status');
       const npEl = root.querySelector('.kaad-now-playing');
       const proxyUrl = <?php echo json_encode($proxy); ?>;
       const refreshMs = <?php echo json_encode($refresh * 1000); ?>;
@@ -790,28 +794,153 @@ add_shortcode('kaad_radio_player', function ($atts) {
       }
 
       if (audio && playBtn) {
-        playBtn.addEventListener('click', async function () {
-          try {
-            if (audio.paused) {
-              await audio.play();
-              playBtn.classList.add('is-playing');
-            } else {
-              audio.pause();
-              playBtn.classList.remove('is-playing');
+        const retryDelays = [2000, 4000, 8000, 16000, 30000];
+        const stallTimeoutMs = 15000;
+        let wantsPlayback = audio.autoplay;
+        let retryCount = 0;
+        let retryTimer = null;
+        let stallTimer = null;
+        let generation = 0;
+
+        function setPlaybackStatus(message) {
+          if (playbackStatus) playbackStatus.textContent = message;
+        }
+
+        function updateButton() {
+          const isPlaying = !audio.paused && !audio.ended;
+          playBtn.classList.toggle('is-playing', isPlaying);
+          playBtn.setAttribute('aria-label', wantsPlayback ? 'Pause radio' : 'Play radio');
+          playBtn.setAttribute('aria-pressed', wantsPlayback ? 'true' : 'false');
+        }
+
+        function clearTimers() {
+          if (retryTimer !== null) clearTimeout(retryTimer);
+          if (stallTimer !== null) clearTimeout(stallTimer);
+          retryTimer = null;
+          stallTimer = null;
+        }
+
+        function stopPlayback() {
+          wantsPlayback = false;
+          generation += 1;
+          retryCount = 0;
+          clearTimers();
+          audio.pause();
+          setPlaybackStatus('');
+          updateButton();
+        }
+
+        function scheduleRetry(reason) {
+          if (!wantsPlayback || retryTimer !== null) return;
+          if (stallTimer !== null) clearTimeout(stallTimer);
+          stallTimer = null;
+          if (retryCount >= retryDelays.length) {
+            wantsPlayback = false;
+            setPlaybackStatus('Stream unavailable. Tap play to try again.');
+            console.warn('KAAD radio: playback stopped after retries', reason);
+            updateButton();
+            return;
+          }
+
+          const delay = retryDelays[retryCount++];
+          const seconds = Math.ceil(delay / 1000);
+          setPlaybackStatus('Stream interrupted. Retrying in ' + seconds + 's (' + retryCount + '/' + retryDelays.length + ')...');
+          console.warn('KAAD radio: retry scheduled', { reason: reason, attempt: retryCount });
+          const thisGeneration = ++generation;
+          retryTimer = setTimeout(function () {
+            retryTimer = null;
+            if (!wantsPlayback || thisGeneration !== generation) return;
+            // Reload the live stream to avoid resuming a stale connection.
+            audio.pause();
+            audio.load();
+            startPlayback();
+          }, delay);
+        }
+
+        function startStallWatch() {
+          if (!wantsPlayback || retryTimer !== null) return;
+          if (stallTimer !== null) clearTimeout(stallTimer);
+          const thisGeneration = generation;
+          stallTimer = setTimeout(function () {
+            stallTimer = null;
+            if (wantsPlayback && retryTimer === null && thisGeneration === generation &&
+                (audio.paused || audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA)) {
+              scheduleRetry('Stream did not resume within 15 seconds');
             }
+          }, stallTimeoutMs);
+        }
+
+        async function startPlayback() {
+          if (!wantsPlayback || retryTimer !== null) return;
+          const thisGeneration = generation;
+          setPlaybackStatus('Connecting to live stream...');
+          startStallWatch();
+          try {
+            await audio.play();
+            if (thisGeneration !== generation || !wantsPlayback) {
+              audio.pause();
+              return;
+            }
+            updateButton();
           } catch (err) {
-            playBtn.classList.remove('is-playing');
-            setNowPlayingText('Tap play again to start stream');
+            if (thisGeneration !== generation || !wantsPlayback) return;
+            if (err && err.name === 'NotAllowedError') {
+              // Browsers can block autoplay; don't retry without a user gesture.
+              wantsPlayback = false;
+              clearTimers();
+              setPlaybackStatus('Tap play to start listening.');
+              updateButton();
+              return;
+            }
+            scheduleRetry(err && err.message ? err.message : 'play() failed');
+          }
+        }
+
+        playBtn.addEventListener('click', function () {
+          if (wantsPlayback) {
+            stopPlayback();
+          } else {
+            clearTimers();
+            retryCount = 0;
+            generation += 1;
+            wantsPlayback = true;
+            updateButton();
+            startPlayback();
           }
         });
 
+        audio.addEventListener('playing', function () {
+          if (!wantsPlayback) return;
+          retryCount = 0;
+          clearTimers();
+          setPlaybackStatus('');
+          updateButton();
+        });
+        audio.addEventListener('waiting', startStallWatch);
+        audio.addEventListener('stalled', startStallWatch);
+        audio.addEventListener('error', function () {
+          const code = audio.error ? audio.error.code : 'unknown';
+          scheduleRetry('Media error ' + code);
+        });
+        audio.addEventListener('ended', function () {
+          scheduleRetry('Stream ended');
+        });
         audio.addEventListener('pause', function () {
-          playBtn.classList.remove('is-playing');
+          updateButton();
+          // Unexpected pause while listening should reconnect, but a deliberate
+          // pause (or a pause during a scheduled retry) must never reconnect.
+          if (wantsPlayback && retryTimer === null) startStallWatch();
+        });
+        audio.addEventListener('play', function () {
+          // Handles autoplay events as well as explicit play clicks.
+          if (audio.autoplay && !wantsPlayback && !playBtn.getAttribute('aria-pressed')) {
+            wantsPlayback = true;
+          }
+          updateButton();
         });
 
-        audio.addEventListener('play', function () {
-          playBtn.classList.add('is-playing');
-        });
+        updateButton();
+        if (wantsPlayback) startStallWatch();
       }
 
       if (audio && volume) {
